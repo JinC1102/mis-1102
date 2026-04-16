@@ -50,7 +50,7 @@ def search_form():
 @app.route("/spider1")
 def spider1():
     R = ""
-    url = "http://www1.pu.edu.tw/~tcyang/course.html"
+    url = "https://www1.pu.edu.tw/~tcyang/course.html"
     Data = requests.get(url)
     Data.encoding = "utf-8"
     
@@ -58,11 +58,7 @@ def spider1():
     result = sp.select(".team-box a")
 
     for i in result:
-        # 取得超連結，如果回傳 None (找不到)，就把它當作空字串 ""
-        href_link = i.get("href") or "" 
-        
-        # 使用 f-string 來組合字串，這樣就算變數是空值也不會報錯
-        R += f"{i.text} {href_link}<br>"
+        R += i.text + i.get("href")+"<br>"
         
     return R
 
