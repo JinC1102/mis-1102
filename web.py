@@ -51,7 +51,7 @@ def search_form():
 def spider1():
     R = ""
     url = "https://www1.pu.edu.tw/~tcyang/course.html"
-    Data = requests.get(url)
+    Data = requests.get(url, verify=False)
     Data.encoding = "utf-8"
     
     sp = BeautifulSoup(Data.text, "html.parser")
