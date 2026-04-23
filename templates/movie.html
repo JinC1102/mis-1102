@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>電影搜尋介面</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .movie-card { border-bottom: 1px solid #ddd; padding: 10px 0; }
+        .movie-title { color: #2c3e50; font-size: 1.2em; }
+    </style>
+</head>
+<body>
+    <h2>即將上映電影搜尋</h2>
+    <form action="/movie" method="get">
+        <input type="text" name="keyword" value="{{ keyword }}" placeholder="搜尋片名...">
+        <button type="submit">搜尋</button>
+    </form>
+
+    <div id="results">
+        {% for movie in movies %}
+        <div class="movie-card">
+            <div class="movie-title"><strong>{{ movie.title }}</strong></div>
+            <p>資訊：<a href="{{ movie.info }}" target="_blank">點此查看</a></p>
+            <p>海報：<a href="{{ movie.poster }}" target="_blank">查看圖片</a></p>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

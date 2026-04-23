@@ -6,8 +6,6 @@ Data = requests.get(url)
 Data.encoding = "utf-8"
 #print(Data.text)
 sp = BeautifulSoup(Data.text, "html.parser")
-result=sp.select("td")
-
+result=sp.select("td iframe")
 for i in result:
-	print(i.text)
-	print()
+	print(i.get("src"))
