@@ -34,9 +34,108 @@ def index():
     link += "<a href=/read>讀取Firestore資料</a><hr>"
     link += "<a href=/search_form>教師搜尋系統 (依姓名關鍵字)</a><hr>"
     link += "<a href=/spider1>爬取子青老師本學期課程</a><hr>"
-    link += "<a href=/movie>爬取即將上映電影</a><br>"
+    link += "<a href=/movie>爬取即將上映電影</a><hr>"
+    link += "<a href=/spidermovie>讀取開眼電影即將上映影片，寫入Firestore</a><hr>"
+    link += "<a href=/searchMovie>從資料庫搜尋電影</a><hr>"
 
     return link
+@app.route("/searchMovie")
+def searchMovie():
+    # 獲取使用者輸入的關鍵字 (預設為空字串)
+    keyword = request.args.get("keyword", "")
+   
+    # 建立搜尋表單 UI
+    R = "<h2>從資料庫搜尋電影</h2>"
+    R += "<form action='/searchMovie' method='GET'>"
+    R += f"<input type='text' name='keyword' placeholder='輸入片名關鍵字'' value='{keyword}'> "
+    R += "<input type='submit' value='開始查詢'>"
+    R += "</form><hr>"
+
+    # 如果沒有輸入關鍵字，就先只顯示表單
+    if not keyword:
+        R += "<p>請在上方輸入關鍵字查詢資料庫中的電影。</p>"
+        R += "<br><a href='/'>返回首頁</a>"
+        return R
+
+    R += f"<h3>關鍵字「{keyword}」的查詢結果：</h3>"
+
+    # 連線到 Firestore 資料庫
+    db = firestore.client()
+    collection_ref = db.collection("電影2B")  # 對應你 /spidermovie 寫入的集合
+    docs = collection_ref.stream()
+
+    found_count = 0
+    for doc in docs:
+        movie = doc.to_dict()
+        title = movie.get("title", "")
+       
+        # 關鍵字篩選邏輯 (轉成小寫比對，避免大小寫差異找不到)
+        if keyword.lower() in title.lower():
+            found_count += 1
+            movie_id = doc.id
+            picture = movie.get("picture", "")
+            hyperlink = movie.get("hyperlink", "")
+            showDate = movie.get("showDate", "")
+           
+            # 組合回傳的 HTML 內容，包含編號、片名、上映日期、介紹頁與海報
+            R += "<div>"
+            R += f"<h4>編號: {movie_id}</h4>"
+            R += f"<h4>片名: {title}</h4>"
+            R += f"<p>上映日期: {showDate}</p>"
+            R += f"<p><a href='{hyperlink}' target='_blank'>電影資訊頁</a></p>"
+            R += f"<img src='{picture}' width='200'><br>"
+            R += "</div><hr>"
+
+    # 如果沒找到符合的電影
+    if found_count == 0:
+        R += "<p>抱歉，資料庫中找不到符合條件的電影，請嘗試其他關鍵字或先執行爬蟲寫入資料。</p>"
+
+    R += "<br><a href='/'>返回首頁</a>"
+    return R
+
+@app.route("/spidermovie")
+def spidermovie():
+    R = ""
+    db = firestore.client()
+
+    import requests
+    from bs4 import BeautifulSoup
+    url = "http://www.atmovies.com.tw/movie/next/"
+    Data = requests.get(url)
+    Data.encoding = "utf-8"
+    sp = BeautifulSoup(Data.text, "html.parser")
+    lastUpdate = sp.find(class_="smaller09").text.replace("更新時間：","")
+
+    result=sp.select(".filmListAllX li")
+    info = ""
+    total = 0
+    for item in result:
+      total += 1
+      movie_id = item.find("a").get("href").replace("/movie/", "").replace("/", "")
+      title = item.find(class_="filmtitle").text
+      picture = "http://www.atmovies.com.tw" + item.find("img").get("src")
+      hyperlink = "http://www.atmovies.com.tw" + item.find("a").get("href")
+
+      showDate = item.find(class_="runtime").text[5:15]
+      info += movie_id + "\n" + title + "\n" + picture + "\n" + hyperlink + "\n" + showDate +"\n\n"
+
+      doc = {
+        "title": title,
+        "picture": picture,
+        "hyperlink": hyperlink,
+        "showDate": showDate,
+        "lastUpdate": lastUpdate
+    }
+     
+      doc_ref = db.collection("電影2B").document(movie_id)
+      doc_ref.set(doc)
+
+    #print(info)
+    print(lastUpdate)
+    R += "網站最新更新日期:" + lastUpdate + "<br>"
+    R += "總共爬取"+ str(total) + "部電影到資料庫"
+    R += "<br><a href='/'>返回首頁</a>"
+    return R
 
 @app.route("/movie")
 def movie():
@@ -64,6 +163,7 @@ def movie():
             <input type="text" name="keyword" placeholder="輸入電影名稱..." value="{keyword}" style="padding:5px;">
             <button type="submit" style="padding:5px 15px;">搜尋</button>
             <a href="/movie"><button type="button" style="padding:5px 15px;">顯示全部</button></a>
+            <a href='/'><button type="button" style="padding:5px 15px;">返回首頁</button></a>
         </form>
         <hr>
     """
@@ -93,7 +193,7 @@ def movie():
                         <img src="{poster_url}" alt="海報">
                     </a>
                     <div class="link">
-                        <a href="{introduce}" target="_blank">電影資訊介面</a>
+                        <a href="{introduce}" target="_blank">電影資訊頁</a>
                     </div>
                 </div>
             """
@@ -105,6 +205,7 @@ def movie():
         movie_results = f"<p>找不到與「{keyword}」相關的電影。</p>"
 
     return search_form + header + movie_results
+
 @app.route("/search_form")
 def search_form():
     form_html = "<h2>教師搜尋系統</h2>"
@@ -155,7 +256,7 @@ def read():
     collection_ref = db.collection("PU")    
     docs = collection_ref.get()    
     for doc in docs:         
-        Result += "文件內容：{}".format(doc.to_dict()) + "<br>"    
+        Result += "文件內容：{}".format(doc.to_dict()) + "<br>"   
     return Result
 
 
