@@ -52,7 +52,10 @@ def webhook():
     action = req["queryResult"]["action"]
     msg = req["queryResult"]["queryText"]
     info = "我是朱晉呈的機器人,動作：" + action + "； 查詢內容：" + msg
-
+    if (action == "rateChoice"):
+    rate = req.get("queryResult").get("parameters").get("rate")
+    info = "您選擇的電影分級是：" + rate
+    
     return make_response(jsonify({"fulfillmentText": info}))
 
 @app.route("/rate")
