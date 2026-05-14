@@ -8,6 +8,7 @@ from firebase_admin import credentials, firestore
 import requests
 from bs4 import BeautifulSoup
 
+
 # 判斷是在 Vercel 還是本地
 if os.path.exists('serviceAccountKey.json'):
     # 本地環境：讀取檔案
@@ -37,8 +38,137 @@ def index():
     link += "<a href=/movie>爬取即將上映電影</a><hr>"
     link += "<a href=/spidermovie>讀取開眼電影即將上映影片，寫入Firestore</a><hr>"
     link += "<a href=/searchMovie>從資料庫搜尋電影</a><hr>"
+    link += "<a href=/road>台中市十大肇事路口</a><hr>"
+    link += "<a href=/weather>查詢縣市天氣預報</a><hr>"
+    link += "<a href=/rate>本週新片進DB</a><hr>"
 
     return link
+
+@app.route("/rate")
+def rate():
+    #本週新片
+    url = "https://www.atmovies.com.tw/movie/new/"
+    Data = requests.get(url)
+    Data.encoding = "utf-8"
+    sp = BeautifulSoup(Data.text, "html.parser")
+    lastUpdate = sp.find(class_="smaller09").text[5:]
+    print(lastUpdate)
+    print()
+
+    result=sp.select(".filmList")
+
+    for x in result:
+        title = x.find("a").text
+        introduce = x.find("p").text
+
+        movie_id = x.find("a").get("href").replace("/", "").replace("movie", "")
+        hyperlink = "http://www.atmovies.com.tw/movie/" + movie_id
+        picture = "https://www.atmovies.com.tw/photo101/" + movie_id + "/pm_" + movie_id + ".jpg"
+
+        r = x.find(class_="runtime").find("img")
+        rate = ""
+        if r != None:
+            rr = r.get("src").replace("/images/cer_", "").replace(".gif", "")
+            if rr == "G":
+                rate = "普遍級"
+            elif rr == "P":
+                rate = "保護級"
+            elif rr == "F2":
+                rate = "輔12級"
+            elif rr == "F5":
+                rate = "輔15級"
+            else:
+                rate = "限制級"
+
+        t = x.find(class_="runtime").text
+
+        t1 = t.find("片長")
+        t2 = t.find("分")
+        showLength = t[t1+3:t2]
+
+        t1 = t.find("上映日期")
+        t2 = t.find("上映廳數")
+        showDate = t[t1+5:t2-8]
+
+        doc = {
+            "title": title,
+            "introduce": introduce,
+            "picture": picture,
+            "hyperlink": hyperlink,
+            "showDate": showDate,
+            "showLength": int(showLength),
+            "rate": rate,
+            "lastUpdate": lastUpdate
+        }
+
+        db = firestore.client()
+        doc_ref = db.collection("本週新片含分級").document(movie_id)
+        doc_ref.set(doc)
+    return "本週新片已爬蟲及存檔完畢，網站最近更新日期為：" + lastUpdate
+
+@app.route("/weather", methods=["GET", "POST"])
+def weather():
+    R = "<h2>縣市天氣查詢</h2>"
+    R += """
+        <form action="/weather" method="post">
+            請輸入欲查詢縣市(如: 宜蘭縣): <input type="text" name="city">
+            <input type="submit" value="查詢">
+        </form><hr>
+    """
+   
+    if request.method == "POST":
+        city = request.form.get("city").strip().replace("台", "臺")
+        # 注意：請確保這是有效的授權碼，或是從氣象署申請自己的 key
+        auth_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001"
+        params = {
+            "Authorization": "rdec-key-123-45678-011121314", # 請替換為正確的 Key
+            "locationName": city,
+            "format": "JSON"
+        }
+       
+        try:
+            response = requests.get(auth_url, params=params)
+            json_data = response.json()
+           
+            # 檢查是否有抓到對應縣市的資料
+            if "records" in json_data and json_data["records"]["location"]:
+                loc_data = json_data["records"]["location"][0]
+               
+                # 取得縣市名稱
+                location_name = loc_data["locationName"]
+               
+                # 取得天氣現象 (Wx) - 通常在第 0 個 element
+                weather_desc = loc_data["weatherElement"][0]["time"][0]["parameter"]["parameterName"]
+               
+                # 取得降雨機率 (PoP) - 通常在第 1 個 element
+                rain_prob = loc_data["weatherElement"][1]["time"][0]["parameter"]["parameterName"]
+               
+                R += f"<h3>{location_name} 最新天氣預報</h3>"
+                R += f"目前狀況：{weather_desc}<br>"
+                R += f"降雨機率：{rain_prob}%<br>"
+            else:
+                R += f"<p style='color:red'>找不到「{city}」的資料。請確認輸入正確（例如：宜蘭縣）。</p>"
+               
+        except Exception as e:
+            R += f"查詢出錯：{str(e)}"
+           
+    R += "<br><a href='/'>返回首頁</a>"
+    return R
+
+@app.route("/road")
+def road():
+    R = "<h1>台中市十大肇事路口(113年10月)作者:朱晉呈</h1><br>"
+
+    url = "https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=a1b899c0-511f-4e3d-b22b-814982a97e41"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    Data = requests.get(url, headers=headers)
+    #print(Data.text)
+    JsonData = json.loads(Data.text)
+    for item in JsonData:
+        R += item["路口名稱"] + ",原因:"+ item["主要肇因"] + ",件數:"+ item["總件數"] +"<br>"
+
+    return R
+
 @app.route("/searchMovie")
 def searchMovie():
     # 獲取使用者輸入的關鍵字 (預設為空字串)
