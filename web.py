@@ -41,8 +41,14 @@ def index():
     link += "<a href=/road>台中市十大肇事路口</a><hr>"
     link += "<a href=/weather>查詢縣市天氣預報</a><hr>"
     link += "<a href=/rate>本週新片進DB</a><hr>"
+    link += "<a href=/webdemo>聊天機器人</a><hr>"
 
     return link
+
+@app.route("/webdemo")
+def webdemo():
+    R = "<a href='/'>返回首頁</a><hr>"
+    return render_template("webdemo.html")+"<br>" + R
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -136,47 +142,58 @@ def weather():
     R = "<h2>縣市天氣查詢</h2>"
     R += """
         <form action="/weather" method="post">
-            請輸入欲查詢縣市(如: 宜蘭縣): <input type="text" name="city">
+            請輸入欲查詢縣市(如: 宜蘭、嘉義、台南): <input type="text" name="city">
             <input type="submit" value="查詢">
         </form><hr>
     """
-   
+    
     if request.method == "POST":
-        city = request.form.get("city").strip().replace("台", "臺")
-        # 注意：請確保這是有效的授權碼，或是從氣象署申請自己的 key
+        user_input = request.form.get("city").strip().replace("台", "臺")
+        
+        valid_cities = [
+            "臺北市", "新北市", "桃園市", "臺中市", "臺南市", "高雄市",
+            "基隆市", "新竹市", "嘉義市", "新竹縣", "苗栗縣", "彰化縣",
+            "南投縣", "雲林縣", "嘉義縣", "屏東縣", "宜蘭縣", "花蓮縣",
+            "臺東縣", "澎湖縣", "金門縣", "連江縣"
+        ]
+        
+        # 找出所有包含輸入字串的縣市（例如輸入「嘉義」，會得到 ["嘉義市", "嘉義縣"]）
+        matched_cities = [city for city in valid_cities if user_input in city]
+        
+        # 如果有配對到，用逗號串接 (API 支援 "嘉義市,嘉義縣" 這種格式)
+        # 如果沒配對到，就把原本的輸入送出去，讓後續報錯
+        location_query = ",".join(matched_cities) if matched_cities else user_input
+        
         auth_url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001"
         params = {
             "Authorization": "rdec-key-123-45678-011121314", # 請替換為正確的 Key
-            "locationName": city,
+            "locationName": location_query, 
             "format": "JSON"
         }
-       
+        
         try:
             response = requests.get(auth_url, params=params)
             json_data = response.json()
-           
-            # 檢查是否有抓到對應縣市的資料
+            
+            # 檢查 API 回傳是否有資料
             if "records" in json_data and json_data["records"]["location"]:
-                loc_data = json_data["records"]["location"][0]
-               
-                # 取得縣市名稱
-                location_name = loc_data["locationName"]
-               
-                # 取得天氣現象 (Wx) - 通常在第 0 個 element
-                weather_desc = loc_data["weatherElement"][0]["time"][0]["parameter"]["parameterName"]
-               
-                # 取得降雨機率 (PoP) - 通常在第 1 個 element
-                rain_prob = loc_data["weatherElement"][1]["time"][0]["parameter"]["parameterName"]
-               
-                R += f"<h3>{location_name} 最新天氣預報</h3>"
-                R += f"目前狀況：{weather_desc}<br>"
-                R += f"降雨機率：{rain_prob}%<br>"
+                
+                # 因為可能有多個縣市，所以我們用迴圈把每個縣市的資料印出來
+                for loc_data in json_data["records"]["location"]:
+                    location_name = loc_data["locationName"]
+                    weather_desc = loc_data["weatherElement"][0]["time"][0]["parameter"]["parameterName"]
+                    rain_prob = loc_data["weatherElement"][1]["time"][0]["parameter"]["parameterName"]
+                    
+                    R += f"<h3>{location_name} 最新天氣預報</h3>"
+                    R += f"目前狀況：{weather_desc}<br>"
+                    R += f"降雨機率：{rain_prob}%<br>"
+                    R += "<hr style='border: 0.5px dashed #ccc;'>" # 加一條虛線分隔不同縣市
             else:
-                R += f"<p style='color:red'>找不到「{city}」的資料。請確認輸入正確（例如：宜蘭縣）。</p>"
-               
+                R += f"<p style='color:red'>找不到「{user_input}」的資料。請確認輸入正確。</p>"
+                
         except Exception as e:
             R += f"查詢出錯：{str(e)}"
-           
+            
     R += "<br><a href='/'>返回首頁</a>"
     return R
 
